@@ -3,7 +3,6 @@ import imageio_ffmpeg
 from flask import Flask, request, jsonify, render_template, send_file, after_this_request
 from flask_cors import CORS
 
-# static ffmpeg పాత్ తీసుకోవడం
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
 app = Flask(__name__)
