@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Downloader</title>
+  <style>
+    body { font-family: sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    .card { background: #1e293b; padding: 25px; border-radius: 12px; width: 100%; max-width: 420px; text-align: center; }
+    input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; margin-bottom: 12px; box-sizing: border-box; }
+    button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #0284c7; color: white; font-weight: bold; cursor: pointer; }
+    #status { margin-top: 15px; color: #38bdf8; display: none; font-weight: bold; }
+    #dlBtn { display: none; margin-top: 15px; background: #10b981; color: white; text-decoration: none; padding: 12px; border-radius: 8px; font-weight: bold; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h2>Video Downloader</h2>
+  <input type="text" id="url" placeholder="Paste Video URL here">
+  <button id="btn" onclick="start()">Download</button>
+  <div id="status"></div>
+  <a id="dlBtn" href="#">Save Video to Phone</a>
+</div>
+<script>
+async function start() {
+  const url = document.getElementById("url").value.trim();
+  const status = document.getElementById("status");
+  const dlBtn = document.getElementById("dlBtn");
+  if(!url) return alert("Enter URL");
+  status.style.display = "block";
+  status.innerText = "Downloading & Merging...";
+  dlBtn.style.display = "none";
+  try {
+    const res = await fetch("/get-video", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({url}) });
+    const data = await res.json();
+    if(data.download_url) {
+      status.innerText = "Ready!";
+      dlBtn.href = data.download_url;
+      dlBtn.style.display = "block";
+    } else { alert(data.error || "Failed"); status.style.display = "none"; }
+  } catch(e) { alert("Error connecting to server"); status.style.display = "none"; }
+}
+</script>
+</body>
+</html>
