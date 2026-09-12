@@ -1,6 +1,10 @@
 import os, glob, subprocess, threading, time
+import imageio_ffmpeg
 from flask import Flask, request, jsonify, render_template, send_file, after_this_request
 from flask_cors import CORS
+
+# static ffmpeg పాత్ తీసుకోవడం
+FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
 app = Flask(__name__)
 CORS(app)
@@ -29,9 +33,16 @@ def get_video():
     if not url: return jsonify({"error": "URL missing"}), 400
     file_id = str(int(time.time()))
     out_template = f"{DOWNLOAD_DIR}/{file_id}.%(ext)s"
-    cmd = ["yt-dlp", "-f", "bv*+ba/b", "--merge-output-format", "mp4", "-o", out_template, url]
+    cmd = [
+        "yt-dlp",
+        "--ffmpeg-location", FFMPEG_PATH,
+        "-f", "bv*+ba/b",
+        "--merge-output-format", "mp4",
+        "-o", out_template,
+        url
+    ]
     try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=180)
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=240)
         if res.returncode != 0: return jsonify({"error": "Download failed"}), 500
         if not glob.glob(f"{DOWNLOAD_DIR}/{file_id}.mp4"): return jsonify({"error": "File processing error"}), 500
         return jsonify({"title": "Video Ready", "download_url": f"/download-file/{file_id}"})
