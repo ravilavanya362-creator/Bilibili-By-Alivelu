@@ -1,64 +1,62 @@
-import os, glob, subprocess, threading, time
-import imageio_ffmpeg
-from flask import Flask, request, jsonify, render_template_string, send_file, after_this_request
+import os, json, subprocess, requests
+from flask import Flask, request, jsonify, render_template_string, Response
 from flask_cors import CORS
-
-FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
 app = Flask(__name__)
 CORS(app)
-DOWNLOAD_DIR = "/tmp/downloaded_files"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 HTML_PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bilibili Downloader</title>
+  <meta name="viewport" content="width="device-width", initial-scale=1.0">
+  <title>Bilibili Ultra Downloader</title>
   <style>
-    body { background: #0d1117; color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-    .box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 25px; width: 90%; max-width: 400px; text-align: center; }
-    input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #fff; box-sizing: border-box; font-size: 16px; }
-    button { width: 100%; padding: 12px; background: #0070f3; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
-    button:disabled { background: #444; }
-    #status { margin-top: 15px; font-size: 13px; color: #58a6ff; word-break: break-all; white-space: pre-wrap; }
-    .dl-btn { display: inline-block; margin-top: 15px; padding: 12px 20px; background: #238636; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; }
+    body { background: #0d1117; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+    .box { background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 30px 20px; width: 90%; max-width: 420px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+    h2 { margin-top: 0; margin-bottom: 20px; font-size: 1.5rem; color: #58a6ff; }
+    input { width: 100%; padding: 14px; margin-bottom: 16px; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #fff; box-sizing: border-box; font-size: 15px; outline: none; }
+    input:focus { border-color: #58a6ff; }
+    button { width: 100%; padding: 13px; background: #238636; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #2ea043; }
+    button:disabled { background: #333; cursor: not-allowed; }
+    #status { margin-top: 16px; font-size: 14px; color: #8b949e; word-break: break-word; }
+    .dl-btn { display: inline-block; margin-top: 15px; padding: 13px 25px; background: #1f6feb; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; width: 85%; }
   </style>
 </head>
 <body>
   <div class="box">
-    <h3>Bilibili Downloader</h3>
-    <input type="text" id="vurl" placeholder="Paste Bilibili link...">
-    <button id="btn" onclick="downloadVid()">Download</button>
+    <h2>Bilibili Downloader</h2>
+    <input type="text" id="vurl" placeholder="Paste Bilibili link here...">
+    <button id="btn" onclick="fetchDirectLink()">Get Download Link</button>
     <div id="status"></div>
-    <div id="btnContainer"></div>
+    <div id="result"></div>
   </div>
 
   <script>
-    async function downloadVid() {
+    async function fetchDirectLink() {
       const u = document.getElementById("vurl").value.trim();
       const st = document.getElementById("status");
       const b = document.getElementById("btn");
-      const cont = document.getElementById("btnContainer");
+      const resDiv = document.getElementById("result");
 
-      if (!u) { alert("Please enter a link!"); return; }
+      if (!u) { alert("Paste a valid link!"); return; }
       b.disabled = true;
-      cont.innerHTML = "";
-      st.innerText = "Processing video on server (1-2 mins)...";
+      resDiv.innerHTML = "";
+      st.innerText = "Extracting direct media streams...";
 
       try {
-        const res = await fetch("/get-video", {
+        const res = await fetch("/extract", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: u })
         });
         const data = await res.json();
-        if (res.ok && data.download_url) {
-          st.innerText = "Completed!";
-          cont.innerHTML = `<a class="dl-btn" href="${data.download_url}">Save Video to Phone</a>`;
+        if (res.ok && data.stream_url) {
+          st.innerText = data.title || "Video Ready!";
+          resDiv.innerHTML = `<a class="dl-btn" href="${data.stream_url}" target="_blank">⬇️ Download Video (MP4)</a>`;
         } else {
-          st.innerText = "Error: " + (data.error || "Failed");
+          st.innerText = "Error: " + (data.error || "Failed to fetch video");
         }
       } catch (err) {
         st.innerText = "Network Error: " + err.message;
@@ -74,57 +72,77 @@ HTML_PAGE = """<!DOCTYPE html>
 def home():
     return render_template_string(HTML_PAGE)
 
-@app.route("/get-video", methods=["POST"])
-def get_video():
+@app.route("/extract", methods=["POST"])
+def extract():
     data = request.get_json(force=True, silent=True) or {}
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    file_id = str(int(time.time()))
-    out_template = f"{DOWNLOAD_DIR}/{file_id}.%(ext)s"
-
     cmd = [
         "yt-dlp",
-        "--ffmpeg-location", FFMPEG_PATH,
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "--referer", "https://www.bilibili.com/",
-        "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
-        "--merge-output-format", "mp4",
+        "-j",
         "--no-playlist",
         "--no-check-certificates",
-        "-o", out_template,
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "--referer", "https://www.bilibili.com/",
         url
     ]
 
     try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=280)
-        matches = glob.glob(f"{DOWNLOAD_DIR}/{file_id}.*")
-        valid = [f for f in matches if not f.endswith(".part")]
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return jsonify({"error": "Video link could not be parsed"}), 400
+
+        info = json.loads(proc.stdout)
+        title = info.get("title", "Bilibili_Video")
         
-        if not valid:
-            err_output = res.stderr if res.stderr else res.stdout
-            return jsonify({"error": err_output[-300:] if err_output else "Download processing failed"}), 500
-        
-        ext = valid[0].split(".")[-1]
-        return jsonify({"download_url": f"/download-file/{file_id}/{ext}"})
+        target_url = None
+        formats = info.get("formats", [])
+        for f in reversed(formats):
+            if f.get("vcodec") != "none" and f.get("acodec") != "none" and f.get("url"):
+                target_url = f.get("url")
+                break
+                
+        if not target_url and info.get("url"):
+            target_url = info.get("url")
+
+        if not target_url and formats:
+            for f in reversed(formats):
+                if f.get("url"):
+                    target_url = f.get("url")
+                    break
+
+        if not target_url:
+            return jsonify({"error": "Direct stream link not found"}), 404
+
+        proxy_url = f"/stream?video_url={requests.utils.quote(target_url)}&title={requests.utils.quote(title)}"
+        return jsonify({"title": title, "stream_url": proxy_url})
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/download-file/<file_id>/<ext>")
-def download_file(file_id, ext):
-    file_path = f"{DOWNLOAD_DIR}/{file_id}.{ext}"
-    if not os.path.exists(file_path):
-        return "File not found", 404
-    @after_this_request
-    def remove_file(response):
-        def cleanup():
-            time.sleep(30)
-            try: os.remove(file_path)
-            except: pass
-        threading.Thread(target=cleanup).start()
-        return response
-    return send_file(file_path, as_attachment=True, download_name=f"bilibili_{file_id}.{ext}")
+@app.route("/stream")
+def stream():
+    vurl = request.args.get("video_url")
+    title = request.args.get("title", "video")
+    if not vurl:
+        return "Missing URL", 400
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Referer": "https://www.bilibili.com/"
+    }
+
+    req = requests.get(vurl, headers=headers, stream=True)
+    def generate():
+        for chunk in req.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                yield chunk
+
+    response = Response(generate(), content_type=req.headers.get("content-type", "video/mp4"))
+    response.headers["Content-Disposition"] = f"attachment; filename={title}.mp4"
+    return response
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
