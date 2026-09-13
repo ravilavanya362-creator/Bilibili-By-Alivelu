@@ -22,13 +22,13 @@ HTML_PAGE = """<!DOCTYPE html>
     input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #fff; box-sizing: border-box; font-size: 16px; }
     button { width: 100%; padding: 12px; background: #0070f3; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
     button:disabled { background: #444; }
-    #status { margin-top: 15px; font-size: 14px; color: #58a6ff; word-break: break-word; }
-    .dl-btn { display: none; margin-top: 15px; padding: 12px; background: #238636; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; display: block; }
+    #status { margin-top: 15px; font-size: 13px; color: #58a6ff; word-break: break-all; white-space: pre-wrap; }
+    .dl-btn { display: inline-block; margin-top: 15px; padding: 12px 20px; background: #238636; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; }
   </style>
 </head>
 <body>
   <div class="box">
-    <h3>Video Downloader</h3>
+    <h3>Bilibili Downloader</h3>
     <input type="text" id="vurl" placeholder="Paste Bilibili link...">
     <button id="btn" onclick="downloadVid()">Download</button>
     <div id="status"></div>
@@ -45,7 +45,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (!u) { alert("Please enter a link!"); return; }
       b.disabled = true;
       cont.innerHTML = "";
-      st.innerText = "Downloading from Bilibili & processing...";
+      st.innerText = "Processing video on server (1-2 mins)...";
 
       try {
         const res = await fetch("/get-video", {
@@ -58,7 +58,7 @@ HTML_PAGE = """<!DOCTYPE html>
           st.innerText = "Completed!";
           cont.innerHTML = `<a class="dl-btn" href="${data.download_url}">Save Video to Phone</a>`;
         } else {
-          st.innerText = "Error: " + (data.error || "Failed to download");
+          st.innerText = "Error: " + (data.error || "Failed");
         }
       } catch (err) {
         st.innerText = "Network Error: " + err.message;
@@ -87,10 +87,12 @@ def get_video():
     cmd = [
         "yt-dlp",
         "--ffmpeg-location", FFMPEG_PATH,
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "--referer", "https://www.bilibili.com/",
-        "-f", "bestvideo+bestaudio/best",
+        "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
         "--merge-output-format", "mp4",
+        "--no-playlist",
+        "--no-check-certificates",
         "-o", out_template,
         url
     ]
@@ -99,9 +101,10 @@ def get_video():
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=280)
         matches = glob.glob(f"{DOWNLOAD_DIR}/{file_id}.*")
         valid = [f for f in matches if not f.endswith(".part")]
+        
         if not valid:
-            err_msg = res.stderr if res.stderr else res.stdout
-            return jsonify({"error": err_msg[-300:] if err_msg else "Processing failed"}), 500
+            err_output = res.stderr if res.stderr else res.stdout
+            return jsonify({"error": err_output[-300:] if err_output else "Download processing failed"}), 500
         
         ext = valid[0].split(".")[-1]
         return jsonify({"download_url": f"/download-file/{file_id}/{ext}"})
@@ -121,7 +124,7 @@ def download_file(file_id, ext):
             except: pass
         threading.Thread(target=cleanup).start()
         return response
-    return send_file(file_path, as_attachment=True, download_name=f"video_{file_id}.{ext}")
+    return send_file(file_path, as_attachment=True, download_name=f"bilibili_{file_id}.{ext}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
