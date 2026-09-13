@@ -1,4 +1,5 @@
-import os, json, subprocess, time
+import os, json, subprocess, time, re
+import urllib.parse
 import requests
 from flask import Flask, request, jsonify, render_template_string, Response
 from flask_cors import CORS
@@ -43,7 +44,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (!u) { alert("Paste a valid link!"); return; }
       b.disabled = true;
       resDiv.innerHTML = "";
-      st.innerText = "Extracting direct media streams...";
+      st.innerText = "Extracting video link...";
 
       try {
         const res = await fetch("/extract", {
@@ -98,9 +99,6 @@ def extract():
 
         info = json.loads(proc.stdout)
         title = info.get("title", "Bilibili_Video")
-        clean_title = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-')).strip()
-        if not clean_title:
-            clean_title = "bilibili_video"
 
         target_url = None
         formats = info.get("formats", [])
@@ -119,10 +117,10 @@ def extract():
                     break
 
         if not target_url:
-            return jsonify({"error": "Direct media link not available"}), 404
+            return jsonify({"error": "Direct stream link not found"}), 404
 
         key = str(int(time.time() * 1000))
-        URL_CACHE[key] = {"url": target_url, "title": clean_title}
+        URL_CACHE[key] = {"url": target_url, "title": title}
 
         return jsonify({"title": title, "download_url": f"/stream/{key}"})
 
@@ -133,10 +131,17 @@ def extract():
 def stream_file(key):
     item = URL_CACHE.get(key)
     if not item:
-        return "Download link expired or invalid. Please try again.", 404
+        return "Download link expired. Please click Get Download Link again.", 404
 
     target_url = item["url"]
-    filename = item["title"]
+    raw_title = item.get("title", "video")
+    
+    # Safe ASCII filename for HTTP Header compatibility
+    safe_ascii = re.sub(r'[^a-zA-Z0-9_-]', '_', raw_title)[:50].strip('_')
+    if not safe_ascii:
+        safe_ascii = f"bilibili_{key}"
+    
+    encoded_utf8 = urllib.parse.quote(raw_title)
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -151,7 +156,8 @@ def stream_file(key):
                     yield chunk
 
         resp = Response(generate(), content_type="video/mp4")
-        resp.headers["Content-Disposition"] = f'attachment; filename="{filename}.mp4"'
+        # Uses safe ASCII filename + UTF-8 fallback for browser compatibility
+        resp.headers["Content-Disposition"] = f'attachment; filename="{safe_ascii}.mp4"; filename*=UTF-8\'\'{encoded_utf8}.mp4'
         if "content-length" in r.headers:
             resp.headers["Content-Length"] = r.headers["content-length"]
         return resp
