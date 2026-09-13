@@ -3,43 +3,114 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Downloader</title>
+  <title>Bilibili Video Downloader</title>
   <style>
-    body { font-family: sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-    .card { background: #1e293b; padding: 25px; border-radius: 12px; width: 100%; max-width: 420px; text-align: center; }
-    input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; margin-bottom: 12px; box-sizing: border-box; }
-    button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #0284c7; color: white; font-weight: bold; cursor: pointer; }
-    #status { margin-top: 15px; color: #38bdf8; display: none; font-weight: bold; }
-    #dlBtn { display: none; margin-top: 15px; background: #10b981; color: white; text-decoration: none; padding: 12px; border-radius: 8px; font-weight: bold; }
+    body {
+      background-color: #0d1117;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background-color: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 30px 24px;
+      width: 90%;
+      max-width: 400px;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    h2 { margin-top: 0; margin-bottom: 20px; font-size: 1.4rem; }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 16px;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      background: #0d1117;
+      color: #fff;
+      box-sizing: border-box;
+      font-size: 1rem;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #0070f3;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { background-color: #555; }
+    #status { margin-top: 18px; font-size: 0.95rem; color: #58a6ff; min-height: 24px; }
+    .btn-save {
+      display: none;
+      margin-top: 15px;
+      padding: 12px;
+      background-color: #238636;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
-<div class="card">
-  <h2>Video Downloader</h2>
-  <input type="text" id="url" placeholder="Paste Video URL here">
-  <button id="btn" onclick="start()">Download</button>
-  <div id="status"></div>
-  <a id="dlBtn" href="#">Save Video to Phone</a>
-</div>
-<script>
-async function start() {
-  const url = document.getElementById("url").value.trim();
-  const status = document.getElementById("status");
-  const dlBtn = document.getElementById("dlBtn");
-  if(!url) return alert("Enter URL");
-  status.style.display = "block";
-  status.innerText = "Downloading & Merging...";
-  dlBtn.style.display = "none";
-  try {
-    const res = await fetch("/get-video", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({url}) });
-    const data = await res.json();
-    if(data.download_url) {
-      status.innerText = "Ready!";
-      dlBtn.href = data.download_url;
-      dlBtn.style.display = "block";
-    } else { alert(data.error || "Failed"); status.style.display = "none"; }
-  } catch(e) { alert("Error connecting to server"); status.style.display = "none"; }
-}
-</script>
+  <div class="card">
+    <h2>Video Downloader</h2>
+    <input type="text" id="url" placeholder="Paste Bilibili link here...">
+    <button id="dlBtn" onclick="startDownload()">Download</button>
+    <div id="status"></div>
+    <a id="saveBtn" class="btn-save" href="#" download>Save Video to Phone</a>
+  </div>
+
+  <script>
+    async function startDownload() {
+      const url = document.getElementById('url').value.trim();
+      const status = document.getElementById('status');
+      const saveBtn = document.getElementById('saveBtn');
+      const dlBtn = document.getElementById('dlBtn');
+
+      if (!url) {
+        alert('Please paste a link first!');
+        return;
+      }
+
+      saveBtn.style.display = 'none';
+      dlBtn.disabled = true;
+      status.innerText = 'Downloading & Merging (may take 1-2 mins)...';
+
+      try {
+        const response = await fetch('/get-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: url })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.download_url) {
+          status.innerText = 'Download Ready!';
+          saveBtn.href = data.download_url;
+          saveBtn.style.display = 'block';
+        } else {
+          status.innerText = 'Error: ' + (data.error || 'Failed to download');
+          alert('Error: ' + (data.error || 'Failed to download'));
+        }
+      } catch (err) {
+        status.innerText = 'Connection error. Please try again.';
+        alert('Connection error: ' + err.message);
+      } finally {
+        dlBtn.disabled = false;
+      }
+    }
+  </script>
 </body>
 </html>
