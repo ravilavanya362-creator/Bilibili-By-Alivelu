@@ -1,40 +1,89 @@
 import os, glob, subprocess, threading, time
 import imageio_ffmpeg
-from flask import Flask, request, jsonify, render_template, send_file, after_this_request
+from flask import Flask, request, jsonify, render_template_string, send_file, after_this_request
 from flask_cors import CORS
 
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
 app = Flask(__name__)
 CORS(app)
-DOWNLOAD_DIR = "downloaded_files"
+DOWNLOAD_DIR = "/tmp/downloaded_files"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-def cleanup_old_files():
-    while True:
-        time.sleep(300)
-        now = time.time()
-        for f in glob.glob(f"{DOWNLOAD_DIR}/*"):
-            if os.stat(f).st_mtime < now - 600:
-                try: os.remove(f)
-                except: pass
+HTML_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bilibili Downloader</title>
+  <style>
+    body { background: #0d1117; color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+    .box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 25px; width: 90%; max-width: 400px; text-align: center; }
+    input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #fff; box-sizing: border-box; font-size: 16px; }
+    button { width: 100%; padding: 12px; background: #0070f3; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    button:disabled { background: #444; }
+    #status { margin-top: 15px; font-size: 14px; color: #58a6ff; word-break: break-word; }
+    .dl-btn { display: none; margin-top: 15px; padding: 12px; background: #238636; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; display: block; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h3>Video Downloader</h3>
+    <input type="text" id="vurl" placeholder="Paste Bilibili link...">
+    <button id="btn" onclick="downloadVid()">Download</button>
+    <div id="status"></div>
+    <div id="btnContainer"></div>
+  </div>
 
-threading.Thread(target=cleanup_old_files, daemon=True).start()
+  <script>
+    async function downloadVid() {
+      const u = document.getElementById("vurl").value.trim();
+      const st = document.getElementById("status");
+      const b = document.getElementById("btn");
+      const cont = document.getElementById("btnContainer");
+
+      if (!u) { alert("Please enter a link!"); return; }
+      b.disabled = true;
+      cont.innerHTML = "";
+      st.innerText = "Downloading from Bilibili & processing...";
+
+      try {
+        const res = await fetch("/get-video", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: u })
+        });
+        const data = await res.json();
+        if (res.ok && data.download_url) {
+          st.innerText = "Completed!";
+          cont.innerHTML = `<a class="dl-btn" href="${data.download_url}">Save Video to Phone</a>`;
+        } else {
+          st.innerText = "Error: " + (data.error || "Failed to download");
+        }
+      } catch (err) {
+        st.innerText = "Network Error: " + err.message;
+      } finally {
+        b.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>"""
 
 @app.route("/")
 def home():
-    return render_template("index.html")
+    return render_template_string(HTML_PAGE)
 
 @app.route("/get-video", methods=["POST"])
 def get_video():
-    data = request.json or {}
+    data = request.get_json(force=True, silent=True) or {}
     url = data.get("url", "").strip()
     if not url:
-        return jsonify({"error": "URL missing"}), 400
-    
+        return jsonify({"error": "No URL provided"}), 400
+
     file_id = str(int(time.time()))
     out_template = f"{DOWNLOAD_DIR}/{file_id}.%(ext)s"
-    
+
     cmd = [
         "yt-dlp",
         "--ffmpeg-location", FFMPEG_PATH,
@@ -42,25 +91,20 @@ def get_video():
         "--referer", "https://www.bilibili.com/",
         "-f", "bestvideo+bestaudio/best",
         "--merge-output-format", "mp4",
-        "--no-playlist",
         "-o", out_template,
         url
     ]
-    
+
     try:
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=280)
-        print("STDOUT:", res.stdout)
-        print("STDERR:", res.stderr)
-        
         matches = glob.glob(f"{DOWNLOAD_DIR}/{file_id}.*")
-        valid_files = [f for f in matches if not f.endswith(".part")]
+        valid = [f for f in matches if not f.endswith(".part")]
+        if not valid:
+            err_msg = res.stderr if res.stderr else res.stdout
+            return jsonify({"error": err_msg[-300:] if err_msg else "Processing failed"}), 500
         
-        if not valid_files:
-            return jsonify({"error": res.stderr[-200:] if res.stderr else "Download failed"}), 500
-            
-        final_file = valid_files[0]
-        ext = final_file.split(".")[-1]
-        return jsonify({"title": "Video Ready", "download_url": f"/download-file/{file_id}/{ext}"})
+        ext = valid[0].split(".")[-1]
+        return jsonify({"download_url": f"/download-file/{file_id}/{ext}"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -68,19 +112,16 @@ def get_video():
 def download_file(file_id, ext):
     file_path = f"{DOWNLOAD_DIR}/{file_id}.{ext}"
     if not os.path.exists(file_path):
-        return "File Not Found", 404
-        
+        return "File not found", 404
     @after_this_request
     def remove_file(response):
-        def delete():
+        def cleanup():
             time.sleep(30)
-            if os.path.exists(file_path):
-                try: os.remove(file_path)
-                except: pass
-        threading.Thread(target=delete).start()
+            try: os.remove(file_path)
+            except: pass
+        threading.Thread(target=cleanup).start()
         return response
-        
-    return send_file(file_path, as_attachment=True, download_name=f"bilibili_{file_id}.{ext}")
+    return send_file(file_path, as_attachment=True, download_name=f"video_{file_id}.{ext}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
