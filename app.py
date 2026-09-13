@@ -55,7 +55,7 @@ HTML_PAGE = """<!DOCTYPE html>
         const data = await res.json();
         if (res.ok && data.download_url) {
           st.innerText = data.title || "Video Ready!";
-          resDiv.innerHTML = `<a class="dl-btn" href="${data.download_url}">⬇️ Download Video (MP4)</a>`;
+          resDiv.innerHTML = `<a class="dl-btn" href="${data.download_url}">⚡ High-Speed Download (MP4)</a>`;
         } else {
           st.innerText = "Error: " + (data.error || "Failed to fetch video");
         }
@@ -117,7 +117,7 @@ def extract():
                     break
 
         if not target_url:
-            return jsonify({"error": "Direct stream link not found"}), 404
+            return jsonify({"error": "Direct media link not found"}), 404
 
         key = str(int(time.time() * 1000))
         URL_CACHE[key] = {"url": target_url, "title": title}
@@ -136,30 +136,40 @@ def stream_file(key):
     target_url = item["url"]
     raw_title = item.get("title", "video")
     
-    # Safe ASCII filename for HTTP Header compatibility
     safe_ascii = re.sub(r'[^a-zA-Z0-9_-]', '_', raw_title)[:50].strip('_')
     if not safe_ascii:
         safe_ascii = f"bilibili_{key}"
     
     encoded_utf8 = urllib.parse.quote(raw_title)
 
-    headers = {
+    upstream_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Referer": "https://www.bilibili.com/"
     }
 
+    range_header = request.headers.get("Range")
+    if range_header:
+        upstream_headers["Range"] = range_header
+
     try:
-        r = requests.get(target_url, headers=headers, stream=True, timeout=30)
+        session = requests.Session()
+        r = session.get(target_url, headers=upstream_headers, stream=True, timeout=30)
+
+        # 4MB High-Speed buffer chunking
         def generate():
-            for chunk in r.iter_content(chunk_size=1024 * 512):
+            for chunk in r.iter_content(chunk_size=1024 * 1024 * 4):
                 if chunk:
                     yield chunk
 
-        resp = Response(generate(), content_type="video/mp4")
-        # Uses safe ASCII filename + UTF-8 fallback for browser compatibility
+        resp = Response(generate(), status=r.status_code, content_type="video/mp4")
         resp.headers["Content-Disposition"] = f'attachment; filename="{safe_ascii}.mp4"; filename*=UTF-8\'\'{encoded_utf8}.mp4'
+        resp.headers["Accept-Ranges"] = "bytes"
+
         if "content-length" in r.headers:
             resp.headers["Content-Length"] = r.headers["content-length"]
+        if "content-range" in r.headers:
+            resp.headers["Content-Range"] = r.headers["content-range"]
+
         return resp
     except Exception as e:
         return f"Stream error: {str(e)}", 502
