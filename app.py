@@ -23,7 +23,63 @@ HTML_PAGE = """<!DOCTYPE html>
     button:disabled { background: #333; cursor: not-allowed; }
     #status { margin-top: 16px; font-size: 13px; color: #8b949e; word-break: break-word; }
     .dl-btn { display: inline-block; margin-top: 15px; padding: 14px 20px; background: #1f6feb; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; width: 85%; font-size: 16px; }
-  </style>
+  
+        #legalModal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(6px);
+            z-index: 999999;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+        .legal-modal-card {
+            background: #ffffff;
+            width: 100%;
+            max-width: 580px;
+            max-height: 82vh;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.35);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .legal-modal-header {
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+        .legal-modal-header h3 {
+            margin: 0; font-size: 17px; font-weight: 800; color: #0f172a;
+        }
+        .legal-modal-close {
+            background: #e2e8f0; border: none; width: 32px; height: 32px;
+            border-radius: 50%; font-size: 20px; color: #334155; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .legal-modal-body {
+            padding: 20px; overflow-y: auto; font-size: 14px;
+            line-height: 1.7; color: #475569; text-align: left;
+        }
+        .legal-modal-body h4 {
+            color: #0f172a; font-size: 15px; margin: 12px 0 4px;
+        }
+        .footer-nav-btns {
+            display: flex; flex-wrap: wrap; gap: 14px 22px; justify-content: center; margin-bottom: 16px;
+        }
+        .legal-btn {
+            background: none; border: none; padding: 0; color: #94a3b8;
+            font-size: 13.5px; font-weight: 600; cursor: pointer; text-decoration: none; font-family: inherit;
+        }
+        .legal-btn:hover { color: #ffffff; text-decoration: underline; }
+
+    </style>
 </head>
 <body>
   <div class="box">
@@ -66,6 +122,61 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
   </script>
+
+<div id="legalModal" onclick="if(event.target === this) closeLegal()">
+    <div class="legal-modal-card">
+        <div class="legal-modal-header">
+            <h3 id="modalTitle">Information</h3>
+            <button type="button" class="legal-modal-close" onclick="closeLegal()">&times;</button>
+        </div>
+        <div id="modalContent" class="legal-modal-body"></div>
+    </div>
+</div>
+
+<script>
+var legalData = {
+    about: {
+        title: "About BiliSave",
+        content: "<h4>Welcome to BiliSave</h4><p>BiliSave is an ultrafast web utility developed by <strong>Dharshan Studio</strong>. It empowers students, researchers, animators, and digital creators to effortlessly archive public Bilibili videos and audio streams up to 1080p without quality degradation or adware.</p>"
+    },
+    contact: {
+        title: "Contact Support",
+        content: "<h4>Dharshan Studio Support</h4><p>We are here to assist with any technical issues, feedback, or integration questions.</p><p><strong>Official Email:</strong> <a href='mailto:pavanibevara045@gmail.com' style='color:#0284c7;font-weight:bold;'>pavanibevara045@gmail.com</a></p><p>You can also reach out via our Instagram or Threads social channels above.</p>"
+    },
+    privacy: {
+        title: "Privacy Policy",
+        content: "<h4>Privacy & Data Protection</h4><p>1. <strong>No Personal Logs:</strong> We do not require account registration or store personal user records.</p><p>2. <strong>Direct Proxy Delivery:</strong> Video requests are processed dynamically in real-time memory buffer pipelines and never stored permanently on our disks.</p><p>3. <strong>Zero Cookies:</strong> We do not track your cross-site browsing activity or sell data to third parties.</p>"
+    },
+    terms: {
+        title: "Terms of Service",
+        content: "<h4>Service Terms</h4><p>By using BiliSave, you agree that:</p><p>1. The tool is solely for personal, non-commercial offline study, educational review, and archiving.</p><p>2. Users remain responsible for adhering to applicable copyright laws and intellectual property rights.</p>"
+    },
+    dmca: {
+        title: "DMCA & Copyright Policy",
+        content: "<h4>DMCA Notice</h4><p>BiliSave operates with strict adherence to copyright laws and does not host or republish video content. All streams are routed directly from third-party public CDNs.</p><p>If you are a copyright owner wishing to request a domain block or exclusion for specific URLs, email our designated agent at: <a href='mailto:pavanibevara045@gmail.com' style='color:#0284c7;font-weight:bold;'>pavanibevara045@gmail.com</a>. Inquiries are handled within 24-48 business hours.</p>"
+    },
+    disclaimer: {
+        title: "Disclaimer",
+        content: "<h4>Service Disclaimer</h4><p><strong>BiliSave is an independent tool and is NOT affiliated with or endorsed by Bilibili Inc.</strong> All trademarks, logos, and brand names are properties of their respective owners.</p>"
+    }
+};
+
+function openLegal(key) {
+    var data = legalData[key];
+    if (data) {
+        document.getElementById('modalTitle').innerText = data.title;
+        document.getElementById('modalContent').innerHTML = data.content;
+        document.getElementById('legalModal').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closeLegal() {
+    document.getElementById('legalModal').style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+</script>
+
 </body>
 </html>"""
 
